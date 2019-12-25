@@ -30,6 +30,7 @@ export type Polygon = {
 export type Ray = {
     directionPriority: RayDirection[],
     path: Point[],
+    isStart: boolean,
 };
 
 export type Input = {

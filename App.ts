@@ -80,9 +80,14 @@ const calculatePointFromDirection = (point: Point, direction: RayDirection, limi
 const createRay = (startPoint: Point, currentRayDirection: RayDirection, polygons: Polygon[], isSecondary = false): Ray => {
     const directionPriority: RayDirection[] = [];
     const maxDirections = AvailableRayDirections.length;
-    AvailableRayDirections.map(() => {
+    AvailableRayDirections.forEach(() => {
         directionPriority.push(currentRayDirection);
-        currentRayDirection = (currentRayDirection + 1) % maxDirections;
+
+        if (!counterclockwise) {
+            currentRayDirection = (currentRayDirection + 1) % maxDirections;
+        } else {
+            currentRayDirection = (currentRayDirection - 1) < 0 ? maxDirections - 1 : currentRayDirection - 1;
+        }
     });
 
     return {
@@ -232,6 +237,10 @@ const prepareOutput = (rays: Ray[], connections: number[][], start: Point, finis
                 x2: x,
                 y2: y,
             });
+            output.push({
+                cx: intersectionPoint.x,
+                cy: intersectionPoint.y,
+            });
         }
     });
     intersectionPoints.forEach(({x, y}) => {
@@ -245,6 +254,7 @@ const prepareOutput = (rays: Ray[], connections: number[][], start: Point, finis
 };
 
 (() => {
+    const timeStart = new Date().getTime();
     const {
         start,
         finish,
