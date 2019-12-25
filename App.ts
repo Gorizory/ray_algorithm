@@ -77,7 +77,7 @@ const calculatePointFromDirection = (point: Point, direction: RayDirection, limi
     }
 };
 
-const createRay = (startPoint: Point, currentRayDirection: RayDirection, polygons: Polygon[], isSecondary = false): Ray => {
+const createRay = (startPoint: Point, currentRayDirection: RayDirection, counterclockwise: boolean, isStart: boolean): Ray => {
     const directionPriority: RayDirection[] = [];
     const maxDirections = AvailableRayDirections.length;
     AvailableRayDirections.forEach(() => {
@@ -93,8 +93,7 @@ const createRay = (startPoint: Point, currentRayDirection: RayDirection, polygon
     return {
         path: [startPoint],
         directionPriority,
-        isSecondary,
-        isStopped: isInAnyPolygon(startPoint, polygons),
+        isStart,
     };
 };
 
@@ -104,14 +103,8 @@ const countNextStep = (ray: Ray, polygons: Polygon[], limits: Limits): boolean =
     const {
         directionPriority,
         path,
-        isStopped,
-        isSecondary,
     } = ray;
     const head = path[path.length - 1];
-
-    if (isStopped) {
-        return !isSecondary;
-    }
 
     if (!directionPriority.some((direction) => {
         const newPoint = calculatePointFromDirection(head, direction, limits);
@@ -129,12 +122,7 @@ const countNextStep = (ray: Ray, polygons: Polygon[], limits: Limits): boolean =
         const newPoint = path[path.findIndex((point) => _.isEqual(point, head)) - 1];
 
         if (!newPoint) {
-            if (isSecondary) {
-                ray.isStopped = true;
-                return false;
-            } else {
-                return true;
-            }
+            return true;
         }
 
         path.push(newPoint);
@@ -143,92 +131,56 @@ const countNextStep = (ray: Ray, polygons: Polygon[], limits: Limits): boolean =
     return false;
 };
 
-const checkConnected = (rays: Ray[], connections: number[][]): boolean => {
-    rays.forEach((rayI, i) => {
-        rays.forEach((rayJ, j) => {
-            if (i !== j) {
+const checkConnected = (rays: Ray[]): boolean =>
+    rays.reduce((isFinished: boolean, rayI) => {
+        if (isFinished) {
+            return true;
+        }
+
+        rays.forEach((rayJ) => {
+            if (rayI.isStart !== rayJ.isStart) {
                 const rayHead = rayI.path[rayI.path.length - 1];
 
-                if (rayJ.path.some((p) => _.isEqual(rayHead, p)) && !connections[i].includes(j)) {
-                    connections[i].push(j);
-                    connections[j].push(i);
+                if (rayJ.path.some((p) => _.isEqual(rayHead, p))) {
+                    isFinished = true;
                 }
             }
         });
-    });
 
-    let usedRays = [0];
+        return isFinished;
+    }, false);
 
-    // tslint:disable-next-line:prefer-for-of
-    for (let i = 0; i < usedRays.length; i++) {
-        const rayIndex = usedRays[i];
-
-        usedRays = _.uniq([
-            ...usedRays,
-            ...connections[rayIndex],
-        ]);
-    }
-
-    return usedRays.includes(0) && usedRays.includes(1);
-};
-
-const prepareOutput = (rays: Ray[], connections: number[][], start: Point, finish: Point): Output => {
-    let usedRays = [0];
-    const tree: Record<number, {
-        parent: number,
-    }> = {};
-
-    // tslint:disable-next-line:prefer-for-of
-    for (let i = 0; i < usedRays.length; i++) {
-        const rayIndex = usedRays[i];
-        tree[rayIndex] = {
-            parent: usedRays.find((ray) => ray !== rayIndex && connections[rayIndex].includes(ray)),
-        };
-
-        usedRays = _.uniq([
-            ...usedRays,
-            ...connections[rayIndex],
-        ]);
-    }
-
-    const rayPath: number[] = [];
-    let currentRay = 1;
-    while (currentRay !== 0) {
-        rayPath.unshift(currentRay);
-        currentRay = tree[currentRay].parent;
-    }
-    rayPath.unshift(0);
-
-    const resultPath: Point[] = [];
-    const intersectionPoints: Point[] = [start];
-    let intersectionPoint = intersectionPoints[0];
-    rayPath.forEach((ray, index) => {
-        const currentRayPath = rays[ray].path;
-        const nextRay = rayPath[index + 1];
-
-        let nextIntersectionPointIndex: number;
-
-        const rayStartIndex = currentRayPath.findIndex((point) => _.isEqual(point, intersectionPoint));
-        if (nextRay) {
-            nextIntersectionPointIndex = currentRayPath.findIndex((point) => pathIncludesPoint(point, rays[nextRay].path));
-            intersectionPoint = currentRayPath[nextIntersectionPointIndex];
-            intersectionPoints.push(intersectionPoint);
-        } else {
-            nextIntersectionPointIndex = 0;
-        }
-
-        if (rayStartIndex < nextIntersectionPointIndex) {
-            for (let i = rayStartIndex; i < nextIntersectionPointIndex; i++) {
-                resultPath.push(currentRayPath[i]);
-            }
-        } else {
-            for (let i = rayStartIndex; i >= nextIntersectionPointIndex; i--) {
-                resultPath.push(currentRayPath[i]);
-            }
-        }
-    });
-
+const prepareOutput = (rays: Ray[]): Output => {
     const output: Output = [];
+    const resultPath: Point[] = [];
+    let startRay: Ray;
+    let finishRay: Ray;
+
+    rays
+        .filter(({isStart}) => isStart)
+        .find((rayI) => {
+            const rayJ = rayI.path.reduce((possibleFinishRay: Ray, point) =>
+                rays
+                    .filter(({isStart}) => !isStart)
+                    .find(({path}) => pathIncludesPoint(point, path)) || possibleFinishRay, undefined,
+            );
+
+            if (rayJ) {
+                startRay = rayI;
+                finishRay = rayJ;
+            }
+        });
+
+    const intersectionPoint = startRay.path.find((point) => {
+        resultPath.push(point);
+
+        return pathIncludesPoint(point, finishRay.path);
+    });
+
+    for (let i = finishRay.path.findIndex((point) => _.isEqual(point, intersectionPoint)) - 1; i >= 0; i--) {
+        resultPath.push(finishRay.path[i]);
+    }
+
     resultPath.forEach(({x, y}, index) => {
         if (index > 0) {
             output.push({
@@ -242,12 +194,6 @@ const prepareOutput = (rays: Ray[], connections: number[][], start: Point, finis
                 cy: intersectionPoint.y,
             });
         }
-    });
-    intersectionPoints.forEach(({x, y}) => {
-        output.push({
-            cx: x,
-            cy: y,
-        });
     });
 
     return output;
@@ -268,15 +214,18 @@ const prepareOutput = (rays: Ray[], connections: number[][], start: Point, finis
     };
 
     const rays = [
-        createRay(start, RayDirection.Up, polygons),
-        createRay(finish, RayDirection.Down, polygons),
-        createRay({x: start.x, y: finish.y}, RayDirection.Right,  polygons, true),
-        createRay({x: finish.x, y: start.y}, RayDirection.Left,  polygons, true),
+        createRay(start, RayDirection.Up, false, true),
+        createRay(start, RayDirection.Right, true, true),
+        // createRay(start, RayDirection.Left, false, true),
+        // createRay(start, RayDirection.Down, true, true),
+
+        createRay(finish, RayDirection.Down, false, false),
+        createRay(finish, RayDirection.Left, true, false),
+        // createRay(finish, RayDirection.Right, false, false),
+        // createRay(finish, RayDirection.Up, true, false),
     ];
 
-    const connections = rays.map((ray, index) => [index]);
-
-    while (!checkConnected(rays, connections)) {
+    while (!checkConnected(rays)) {
         if (rays.reduce((isError, ray) =>
             countNextStep(ray, polygons, limits), false)
         ) {
@@ -284,5 +233,5 @@ const prepareOutput = (rays: Ray[], connections: number[][], start: Point, finis
         }
     }
 
-    fs.writeFileSync('./output.json', JSON.stringify(prepareOutput(rays, connections, start, finish)));
+    fs.writeFileSync('./output.json', JSON.stringify(prepareOutput(rays)));
 })();
