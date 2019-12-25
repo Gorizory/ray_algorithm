@@ -254,7 +254,6 @@ const prepareOutput = (rays: Ray[], connections: number[][], start: Point, finis
 };
 
 (() => {
-    const timeStart = new Date().getTime();
     const {
         start,
         finish,
