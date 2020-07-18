@@ -5,7 +5,7 @@
     "@types/lodash": "^4.14.149",
     "@types/node": "^12.12.11",
     "@types/typescript": "^2.0.0",
-    "lodash": "^4.17.15",
+    "lodash": "^4.17.19",
     "tslint": "^5.20.1",
     "tslint-eslint-rules": "^5.4.0"
   }
